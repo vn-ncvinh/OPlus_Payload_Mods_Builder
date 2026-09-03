@@ -105,8 +105,8 @@ jobs:
           esac
           aria2c --continue=true --max-connection-per-server=16 \
             --split=16 --min-split-size=10M \
-            --dir="$RUNNER_TEMP" --out=rom-input "$ROM_URL"
-          test -s "$RUNNER_TEMP/rom-input"
+            --dir="$GITHUB_WORKSPACE" --out=rom-input "$ROM_URL"
+          test -s "$GITHUB_WORKSPACE/rom-input"
 
       - name: Build recovery ZIP
         shell: bash
@@ -120,7 +120,7 @@ jobs:
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
           ENABLE_AVB: ${{ inputs.enable_avb_patch }}
         run: |
-          args=("$RUNNER_TEMP/rom-input" --output "$GITHUB_WORKSPACE/build-output")
+          args=("$GITHUB_WORKSPACE/rom-input" --output "$GITHUB_WORKSPACE/build-output")
           [[ "$ENABLE_DEBLOAT" == true ]] || args+=(--skip-debloat)
           [[ "$ENABLE_YOUTUBE" == true ]] || args+=(--skip-youtube-morphe)
           [[ "$ENABLE_PHOTOS" == true ]] || args+=(--skip-photos-spoof)
