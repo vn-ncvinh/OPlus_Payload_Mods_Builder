@@ -45,10 +45,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: oplus-mods-build
-  cancel-in-progress: false
-
 jobs:
   build:
     name: Build and upload ROM
