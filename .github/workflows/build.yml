@@ -37,11 +37,6 @@ on:
         required: true
         type: boolean
         default: true
-      enable_avb_patch:
-        description: Remove AVB flags from fstab files
-        required: true
-        type: boolean
-        default: true
 permissions:
   contents: read
 
@@ -114,7 +109,6 @@ jobs:
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
           ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
-          ENABLE_AVB: ${{ inputs.enable_avb_patch }}
         run: |
           args=("$GITHUB_WORKSPACE/rom-input" --output "$GITHUB_WORKSPACE/build-output")
           [[ "$ENABLE_DEBLOAT" == true ]] || args+=(--skip-debloat)
@@ -122,7 +116,6 @@ jobs:
           [[ "$ENABLE_PHOTOS" == true ]] || args+=(--skip-photos-spoof)
           [[ "$ENABLE_SECURE" == true ]] || args+=(--skip-secure-flag)
           [[ "$ENABLE_LOCK_BYPASS" == true ]] || args+=(--skip-lock-assistant-bypass)
-          [[ "$ENABLE_AVB" == true ]] || args+=(--skip-avb)
           [[ -z "$YOUTUBE_URL" ]] || args+=(--youtube-morphe-url "$YOUTUBE_URL")
           set +e
           ./start-oplus.sh "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
@@ -140,7 +133,6 @@ jobs:
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
           ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
-          ENABLE_AVB: ${{ inputs.enable_avb_patch }}
         run: |
           config="$RUNNER_TEMP/rclone.conf"
           printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
@@ -193,7 +185,8 @@ jobs:
             [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
             [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
             [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
-            [[ "$ENABLE_AVB" == true ]] && echo "  - AVB fstab patch"
+            echo "  - DisableSafeMediaVolume"
+            echo "  - AVB fstab patch"
             echo "  - abl $abl_version (still GBL vulnerability)"
             echo "  - GBL Chainload mode 1"
             echo "- Download URL: [$filename]($drive_url)"
@@ -209,7 +202,6 @@ jobs:
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
           ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
-          ENABLE_AVB: ${{ inputs.enable_avb_patch }}
         run: |
           log="$GITHUB_WORKSPACE/build.log"
           model="Unknown"
@@ -245,7 +237,8 @@ jobs:
             [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
             [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
             [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
-            [[ "$ENABLE_AVB" == true ]] && echo "  - AVB fstab patch"
+            echo "  - DisableSafeMediaVolume"
+            echo "  - AVB fstab patch"
             [[ -z "$abl_version" ]] || echo "  - abl $abl_version (still GBL vulnerability)"
             echo "  - GBL Chainload mode 1"
             echo "- Reason: \`$reason\`"
