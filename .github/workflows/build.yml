@@ -170,11 +170,9 @@ jobs:
           esac
 
           destination="${GDRIVE_DESTINATION%/}/$device"
-          sha256sum "$output" | tee "$GITHUB_WORKSPACE/$filename.sha256"
+          output_sha256="$(sha256sum "$output" | awk '{print $1}')"
           rclone --config "$config" copyto --progress \
             "$output" "$destination/$filename"
-          rclone --config "$config" copyto \
-            "$GITHUB_WORKSPACE/$filename.sha256" "$destination/$filename.sha256"
 
           file_id="$(rclone --config "$config" lsjson \
             "$destination/$filename" --stat | \
@@ -199,7 +197,7 @@ jobs:
             echo "  - abl $abl_version (still GBL vulnerability)"
             echo "  - GBL Chainload mode 1"
             echo "- Download URL: [$filename]($drive_url)"
-            echo "- SHA-256: \`$(sha256sum "$output" | awk '{print $1}')\`"
+            echo "- SHA-256: \`$output_sha256\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize failure
