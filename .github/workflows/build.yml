@@ -150,8 +150,8 @@ jobs:
           output="${outputs[0]}"
           filename="$(basename "$output")"
           case "$filename" in
-            X9U_Mods_*) device=x9u ;;
-            OP15R_Mods_*) device=op15r ;;
+            X9U_Mods_*) device=Oppo_Find_X9_Ultra ;;
+            OP15R_Mods_*) device=OnePlus_15R ;;
             *) echo "Cannot detect device from output filename: $filename"; exit 1 ;;
           esac
 

@@ -29,8 +29,8 @@ Copy the output into the `RCLONE_CONFIG_BASE64` secret without adding quotes.
 
 Open **Actions → OPlus Payload Mods Builder → Run workflow**, enter a direct
 ROM URL, select the desired patches, and start the workflow. The output filename
-automatically selects the `x9u` or `op15r` subdirectory below
-`GDRIVE_DESTINATION`.
+automatically selects the `Oppo_Find_X9_Ultra` or `OnePlus_15R` subdirectory
+below `GDRIVE_DESTINATION`.
 
 The private repository is cloned only inside the temporary Actions runner.
 Credentials are not persisted in its Git checkout. Build output is uploaded to
