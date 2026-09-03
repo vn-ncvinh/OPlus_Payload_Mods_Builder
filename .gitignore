@@ -1,0 +1,4 @@
+build-output/
+rom-input
+*.zip
+*.sha256

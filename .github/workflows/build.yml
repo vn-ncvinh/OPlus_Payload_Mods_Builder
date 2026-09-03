@@ -1,0 +1,180 @@
+name: OPlus Payload Mods Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_url:
+        description: Direct URL to payload.bin or a full OTA ZIP
+        required: true
+        type: string
+      enable_debloat:
+        description: Apply debloat
+        required: true
+        type: boolean
+        default: true
+      enable_youtube_morphe:
+        description: Integrate YouTube Morphe without microG
+        required: true
+        type: boolean
+        default: true
+      youtube_morphe_url:
+        description: Optional YouTube Morphe module URL (blank = latest)
+        required: false
+        type: string
+        default: ""
+      enable_ggphotos_unlimited:
+        description: Apply GGPhotosUnlimited
+        required: true
+        type: boolean
+        default: true
+      enable_disable_flag_secure:
+        description: Apply DisableFlagSecure
+        required: true
+        type: boolean
+        default: true
+      enable_lock_assistant_bypass:
+        description: Apply LockAssistantBypass
+        required: true
+        type: boolean
+        default: true
+      enable_avb_patch:
+        description: Remove AVB flags from fstab files
+        required: true
+        type: boolean
+        default: true
+      drive_subdirectory:
+        description: Optional subdirectory below the configured Drive destination
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oplus-mods-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and upload ROM
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@c28619d8999a147d5e09c1199f84ff6af6ad5794
+        with:
+          swap-size-mb: 1024
+          root-reserve-mb: 512
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            aapt aria2 git-lfs openjdk-21-jre-headless p7zip-full \
+            python3 rclone unzip zip zipalign
+
+      - name: Check required secrets
+        shell: bash
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
+        run: |
+          test -n "$PRIVATE_REPO_TOKEN" || { echo "Missing PRIVATE_REPO_TOKEN"; exit 1; }
+          test -n "$RCLONE_CONFIG_BASE64" || { echo "Missing RCLONE_CONFIG_BASE64"; exit 1; }
+          test -n "$GDRIVE_DESTINATION" || { echo "Missing GDRIVE_DESTINATION"; exit 1; }
+
+      - name: Clone private builder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vn-ncvinh/OPlus_Payload_Mods
+          ref: main
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: builder
+          lfs: true
+          persist-credentials: false
+
+      - name: Download ROM
+        shell: bash
+        env:
+          ROM_URL: ${{ inputs.rom_url }}
+        run: |
+          case "$ROM_URL" in
+            https://*|http://*) ;;
+            *) echo "rom_url must use HTTP or HTTPS"; exit 1 ;;
+          esac
+          aria2c --continue=true --max-connection-per-server=16 \
+            --split=16 --min-split-size=10M \
+            --dir="$RUNNER_TEMP" --out=rom-input "$ROM_URL"
+          test -s "$RUNNER_TEMP/rom-input"
+
+      - name: Build recovery ZIP
+        shell: bash
+        working-directory: builder
+        env:
+          ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
+          ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
+          YOUTUBE_URL: ${{ inputs.youtube_morphe_url }}
+          ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
+          ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
+          ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
+          ENABLE_AVB: ${{ inputs.enable_avb_patch }}
+        run: |
+          args=("$RUNNER_TEMP/rom-input" --output "$GITHUB_WORKSPACE/build-output")
+          [[ "$ENABLE_DEBLOAT" == true ]] || args+=(--skip-debloat)
+          [[ "$ENABLE_YOUTUBE" == true ]] || args+=(--skip-youtube-morphe)
+          [[ "$ENABLE_PHOTOS" == true ]] || args+=(--skip-photos-spoof)
+          [[ "$ENABLE_SECURE" == true ]] || args+=(--skip-secure-flag)
+          [[ "$ENABLE_LOCK_BYPASS" == true ]] || args+=(--skip-lock-assistant-bypass)
+          [[ "$ENABLE_AVB" == true ]] || args+=(--skip-avb)
+          [[ -z "$YOUTUBE_URL" ]] || args+=(--youtube-morphe-url "$YOUTUBE_URL")
+          ./start-oplus.sh "${args[@]}"
+
+      - name: Upload output to Google Drive
+        shell: bash
+        env:
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
+          DRIVE_SUBDIRECTORY: ${{ inputs.drive_subdirectory }}
+        run: |
+          config="$RUNNER_TEMP/rclone.conf"
+          printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
+          chmod 600 "$config"
+
+          mapfile -t outputs < <(find "$GITHUB_WORKSPACE/build-output" \
+            -maxdepth 1 -type f -name '*_Recovery.zip' -print)
+          [[ ${#outputs[@]} -eq 1 ]] || {
+            echo "Expected exactly one recovery ZIP, found ${#outputs[@]}"
+            exit 1
+          }
+
+          destination="${GDRIVE_DESTINATION%/}"
+          if [[ -n "$DRIVE_SUBDIRECTORY" ]]; then
+            [[ "$DRIVE_SUBDIRECTORY" != /* && "$DRIVE_SUBDIRECTORY" != *..* ]] || {
+              echo "Invalid drive_subdirectory"
+              exit 1
+            }
+            destination="$destination/$DRIVE_SUBDIRECTORY"
+          fi
+
+          output="${outputs[0]}"
+          filename="$(basename "$output")"
+          sha256sum "$output" | tee "$GITHUB_WORKSPACE/$filename.sha256"
+          rclone --config "$config" copyto --progress \
+            "$output" "$destination/$filename"
+          rclone --config "$config" copyto \
+            "$GITHUB_WORKSPACE/$filename.sha256" "$destination/$filename.sha256"
+
+          {
+            echo "## Upload complete"
+            echo
+            echo "- File: \`$filename\`"
+            echo "- Destination: \`$destination\`"
+            echo "- SHA-256: \`$(sha256sum "$output" | awk '{print $1}')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
