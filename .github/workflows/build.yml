@@ -160,8 +160,16 @@ jobs:
           output="${outputs[0]}"
           filename="$(basename "$output")"
           case "$filename" in
-            X9U_Mods_*) device=Oppo_Find_X9_Ultra; model="OPPO Find X9 Ultra" ;;
-            OP15R_Mods_*) device=OnePlus_15R; model="OnePlus 15R" ;;
+            X9U_Mods_*)
+              device=Oppo_Find_X9_Ultra
+              model="OPPO Find X9 Ultra"
+              abl_version=16.0.6
+              ;;
+            OP15R_Mods_*)
+              device=OnePlus_15R
+              model="OnePlus 15R"
+              abl_version=16.0.1
+              ;;
             *) echo "Cannot detect device from output filename: $filename"; exit 1 ;;
           esac
 
@@ -192,9 +200,8 @@ jobs:
             [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
             [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
             [[ "$ENABLE_AVB" == true ]] && echo "  - AVB fstab patch"
-            [[ "$ENABLE_DEBLOAT" == true || "$ENABLE_YOUTUBE" == true || \
-              "$ENABLE_PHOTOS" == true || "$ENABLE_SECURE" == true || \
-              "$ENABLE_LOCK_BYPASS" == true || "$ENABLE_AVB" == true ]] || echo "  - None"
+            echo "  - abl $abl_version (still GBL vulnerability)"
+            echo "  - GBL Chainload mode 1"
             echo "- Download URL: [$filename]($drive_url)"
             echo "- SHA-256: \`$(sha256sum "$output" | awk '{print $1}')\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -212,6 +219,7 @@ jobs:
         run: |
           log="$GITHUB_WORKSPACE/build.log"
           model="Unknown"
+          abl_version=""
           reason="Workflow stopped before the builder reported an error"
 
           if [[ -s "$log" ]]; then
@@ -225,6 +233,10 @@ jobs:
             elif [[ -n "$project_id" ]]; then
               model="Unknown (project ID: $project_id)"
             fi
+            case "$model" in
+              "OPPO Find X9 Ultra") abl_version=16.0.6 ;;
+              "OnePlus 15R") abl_version=16.0.1 ;;
+            esac
             [[ -z "$last_error" ]] || reason="$last_error"
             [[ -z "$arb_warning" ]] || reason="$arb_warning; $reason"
           fi
@@ -240,8 +252,7 @@ jobs:
             [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
             [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
             [[ "$ENABLE_AVB" == true ]] && echo "  - AVB fstab patch"
-            [[ "$ENABLE_DEBLOAT" == true || "$ENABLE_YOUTUBE" == true || \
-              "$ENABLE_PHOTOS" == true || "$ENABLE_SECURE" == true || \
-              "$ENABLE_LOCK_BYPASS" == true || "$ENABLE_AVB" == true ]] || echo "  - None"
+            [[ -z "$abl_version" ]] || echo "  - abl $abl_version (still GBL vulnerability)"
+            echo "  - GBL Chainload mode 1"
             echo "- Reason: \`$reason\`"
           } >> "$GITHUB_STEP_SUMMARY"
