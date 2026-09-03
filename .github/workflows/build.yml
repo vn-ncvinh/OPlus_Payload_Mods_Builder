@@ -42,12 +42,6 @@ on:
         required: true
         type: boolean
         default: true
-      drive_subdirectory:
-        description: Optional subdirectory below the configured Drive destination
-        required: false
-        type: string
-        default: ""
-
 permissions:
   contents: read
 
@@ -141,7 +135,6 @@ jobs:
         env:
           RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
           GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
-          DRIVE_SUBDIRECTORY: ${{ inputs.drive_subdirectory }}
         run: |
           config="$RUNNER_TEMP/rclone.conf"
           printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
@@ -154,17 +147,15 @@ jobs:
             exit 1
           }
 
-          destination="${GDRIVE_DESTINATION%/}"
-          if [[ -n "$DRIVE_SUBDIRECTORY" ]]; then
-            [[ "$DRIVE_SUBDIRECTORY" != /* && "$DRIVE_SUBDIRECTORY" != *..* ]] || {
-              echo "Invalid drive_subdirectory"
-              exit 1
-            }
-            destination="$destination/$DRIVE_SUBDIRECTORY"
-          fi
-
           output="${outputs[0]}"
           filename="$(basename "$output")"
+          case "$filename" in
+            X9U_Mods_*) device=x9u ;;
+            OP15R_Mods_*) device=op15r ;;
+            *) echo "Cannot detect device from output filename: $filename"; exit 1 ;;
+          esac
+
+          destination="${GDRIVE_DESTINATION%/}/$device"
           sha256sum "$output" | tee "$GITHUB_WORKSPACE/$filename.sha256"
           rclone --config "$config" copyto --progress \
             "$output" "$destination/$filename"
