@@ -128,13 +128,23 @@ jobs:
           [[ "$ENABLE_LOCK_BYPASS" == true ]] || args+=(--skip-lock-assistant-bypass)
           [[ "$ENABLE_AVB" == true ]] || args+=(--skip-avb)
           [[ -z "$YOUTUBE_URL" ]] || args+=(--youtube-morphe-url "$YOUTUBE_URL")
-          ./start-oplus.sh "${args[@]}"
+          set +e
+          ./start-oplus.sh "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          build_status=${PIPESTATUS[0]}
+          set -e
+          exit "$build_status"
 
       - name: Upload output to Google Drive
         shell: bash
         env:
           RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
           GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
+          ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
+          ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
+          ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
+          ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
+          ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
+          ENABLE_AVB: ${{ inputs.enable_avb_patch }}
         run: |
           config="$RUNNER_TEMP/rclone.conf"
           printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
@@ -150,8 +160,8 @@ jobs:
           output="${outputs[0]}"
           filename="$(basename "$output")"
           case "$filename" in
-            X9U_Mods_*) device=Oppo_Find_X9_Ultra ;;
-            OP15R_Mods_*) device=OnePlus_15R ;;
+            X9U_Mods_*) device=Oppo_Find_X9_Ultra; model="OPPO Find X9 Ultra" ;;
+            OP15R_Mods_*) device=OnePlus_15R; model="OnePlus 15R" ;;
             *) echo "Cannot detect device from output filename: $filename"; exit 1 ;;
           esac
 
@@ -172,10 +182,66 @@ jobs:
           drive_url="https://drive.google.com/file/d/$file_id"
 
           {
-            echo "## Upload complete"
+            echo "## Build complete"
             echo
-            echo "- File: \`$filename\`"
-            echo "- Destination: \`$destination\`"
-            echo "- Google Drive: [$filename]($drive_url)"
+            echo "- Model: **$model**"
+            echo "- Mods enabled:"
+            [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
+            [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
+            [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
+            [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
+            [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
+            [[ "$ENABLE_AVB" == true ]] && echo "  - AVB fstab patch"
+            [[ "$ENABLE_DEBLOAT" == true || "$ENABLE_YOUTUBE" == true || \
+              "$ENABLE_PHOTOS" == true || "$ENABLE_SECURE" == true || \
+              "$ENABLE_LOCK_BYPASS" == true || "$ENABLE_AVB" == true ]] || echo "  - None"
+            echo "- Download URL: [$filename]($drive_url)"
             echo "- SHA-256: \`$(sha256sum "$output" | awk '{print $1}')\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize failure
+        if: ${{ failure() }}
+        shell: bash
+        env:
+          ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
+          ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
+          ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
+          ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
+          ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
+          ENABLE_AVB: ${{ inputs.enable_avb_patch }}
+        run: |
+          log="$GITHUB_WORKSPACE/build.log"
+          model="Unknown"
+          reason="Workflow stopped before the builder reported an error"
+
+          if [[ -s "$log" ]]; then
+            detected="$(sed -n 's/^\[INFO\] Detected \(.*\) (project ID: .*/\1/p' "$log" | tail -n 1)"
+            project_id="$(sed -n 's/^\[ERROR\] Unsupported project ID from payload: //p' "$log" | tail -n 1)"
+            arb_warning="$(sed -n 's/^\[WARN\] \(Anti-rollback is enabled.*\)/\1/p' "$log" | tail -n 1)"
+            last_error="$(sed -n 's/^\[ERROR\] //p' "$log" | tail -n 1)"
+
+            if [[ -n "$detected" ]]; then
+              model="$detected"
+            elif [[ -n "$project_id" ]]; then
+              model="Unknown (project ID: $project_id)"
+            fi
+            [[ -z "$last_error" ]] || reason="$last_error"
+            [[ -z "$arb_warning" ]] || reason="$arb_warning; $reason"
+          fi
+
+          {
+            echo "## Build failed"
+            echo
+            echo "- Model: **$model**"
+            echo "- Mods requested:"
+            [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
+            [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
+            [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
+            [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
+            [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
+            [[ "$ENABLE_AVB" == true ]] && echo "  - AVB fstab patch"
+            [[ "$ENABLE_DEBLOAT" == true || "$ENABLE_YOUTUBE" == true || \
+              "$ENABLE_PHOTOS" == true || "$ENABLE_SECURE" == true || \
+              "$ENABLE_LOCK_BYPASS" == true || "$ENABLE_AVB" == true ]] || echo "  - None"
+            echo "- Reason: \`$reason\`"
           } >> "$GITHUB_STEP_SUMMARY"
