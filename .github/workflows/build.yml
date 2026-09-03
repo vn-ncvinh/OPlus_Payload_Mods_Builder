@@ -162,10 +162,20 @@ jobs:
           rclone --config "$config" copyto \
             "$GITHUB_WORKSPACE/$filename.sha256" "$destination/$filename.sha256"
 
+          file_id="$(rclone --config "$config" lsjson \
+            "$destination/$filename" --stat | \
+            python3 -c 'import json, sys; print(json.load(sys.stdin).get("ID", ""))')"
+          [[ -n "$file_id" ]] || {
+            echo "Unable to read the uploaded Google Drive file ID"
+            exit 1
+          }
+          drive_url="https://drive.google.com/file/d/$file_id"
+
           {
             echo "## Upload complete"
             echo
             echo "- File: \`$filename\`"
             echo "- Destination: \`$destination\`"
+            echo "- Google Drive: [$filename]($drive_url)"
             echo "- SHA-256: \`$(sha256sum "$output" | awk '{print $1}')\`"
           } >> "$GITHUB_STEP_SUMMARY"
