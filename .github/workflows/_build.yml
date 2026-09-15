@@ -1,60 +1,56 @@
-name: OPlus Payload Mods Builder
+# Shared build job. Both run-workflows call this; neither can be run on its own,
+# so the inputs a stock build ignores are simply not offered by the stock form.
+name: build
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       rom_url:
-        description: Direct link to payload.bin or a full OTA ZIP
         required: true
         type: string
       build_mode:
-        description: stock applies no content mod, so the toggles below are ignored
         required: true
-        type: choice
-        options:
-          - mods
-          - stock
-        default: mods
+        type: string
       ace6t_ota_url:
-        description: OnePlus Ace 6T OTA URL - OnePlus 15R only, and always required there
         required: false
         type: string
         default: ""
       my_preload_url:
-        description: Stock my_preload.img URL - X9U stock builds only
+        required: false
+        type: string
+        default: ""
+      youtube_morphe_url:
         required: false
         type: string
         default: ""
       enable_debloat:
-        description: Debloat
-        required: true
+        required: false
         type: boolean
         default: true
       enable_youtube_morphe:
-        description: YouTube Morphe - replaces YouTube, no microG
-        required: true
+        required: false
         type: boolean
         default: true
-      youtube_morphe_url:
-        description: YouTube Morphe module URL - blank picks the latest
-        required: false
-        type: string
-        default: ""
       enable_ggphotos_unlimited:
-        description: Google Photos unlimited backup
-        required: true
+        required: false
         type: boolean
         default: true
       enable_disable_flag_secure:
-        description: Screenshot bypass in apps that block it
-        required: true
+        required: false
         type: boolean
         default: true
       enable_lock_assistant_bypass:
-        description: Carrier-lock bypass
-        required: true
+        required: false
         type: boolean
         default: true
+    secrets:
+      PRIVATE_REPO_TOKEN:
+        required: true
+      RCLONE_CONFIG_BASE64:
+        required: true
+      GDRIVE_DESTINATION:
+        required: true
+
 permissions:
   contents: read
 

@@ -1,0 +1,32 @@
+name: OPlus Stock Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_url:
+        description: Direct link to payload.bin or a full OTA ZIP
+        required: true
+        type: string
+      ace6t_ota_url:
+        description: OnePlus Ace 6T OTA URL - OnePlus 15R only, and always required there
+        required: false
+        type: string
+        default: ""
+      my_preload_url:
+        description: Stock my_preload.img URL - required when the profile donor is not stock
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_build.yml
+    secrets: inherit
+    with:
+      build_mode: stock
+      rom_url: ${{ inputs.rom_url }}
+      ace6t_ota_url: ${{ inputs.ace6t_ota_url }}
+      my_preload_url: ${{ inputs.my_preload_url }}
