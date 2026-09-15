@@ -42,12 +42,6 @@ on:
         required: true
         type: boolean
         default: true
-      my_preload_url:
-        description: Replace the my_preload donor - rarely needed for a modded build
-        required: false
-        type: string
-        default: ""
-
 permissions:
   contents: read
 
@@ -59,7 +53,6 @@ jobs:
       build_mode: mods
       rom_url: ${{ inputs.rom_url }}
       ace6t_ota_url: ${{ inputs.ace6t_ota_url }}
-      my_preload_url: ${{ inputs.my_preload_url }}
       youtube_morphe_url: ${{ inputs.youtube_morphe_url }}
       enable_debloat: ${{ inputs.enable_debloat }}
       enable_youtube_morphe: ${{ inputs.enable_youtube_morphe }}

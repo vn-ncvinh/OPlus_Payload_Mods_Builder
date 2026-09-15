@@ -49,14 +49,14 @@ they do not apply; the builder rejects an image it does not need.
 | Input | When it is required |
 | --- | --- |
 | `ace6t_ota_url` | **Every** OnePlus 15R build, from either workflow. A OnePlus Ace 6T OTA, which the builder reads with range requests to pull out only the odm it needs, then checks that image is the China ODM. |
-| `my_preload_url` | X9U stock builds. Offered by both forms; in a modded build it simply replaces the profile `my_preload` donor. |
+| `my_preload_url` | X9U stock builds, and offered only by the stock form. A modded build uses the profile donor as shipped. |
 
 A stock build first tests the `my_preload` donor the private repo ships. The
 OnePlus 15R donor is a real signed stock image, so nothing extra is needed.
 The X9U donor is an 8 KB placeholder, so an X9U stock build stops and asks for
 `my_preload_url`. In a stock build the image in use must carry a signed
 `my_preload` AVB hashtree matching its contents and a project ID the device
-profile accepts; in a modded build it only has to be an EROFS image.
+profile accepts; a modded build does not check it, because it never supplies one.
 
 The private repository is cloned only inside the temporary Actions runner.
 Credentials are not persisted in its Git checkout. Build output is uploaded to
