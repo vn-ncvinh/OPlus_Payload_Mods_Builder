@@ -185,11 +185,6 @@ jobs:
           GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
           OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
           MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
-          ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
-          ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
-          ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
-          ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
-          ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
         run: |
           config="$RUNNER_TEMP/rclone.conf"
           printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
@@ -204,20 +199,22 @@ jobs:
 
           output="${outputs[0]}"
           filename="$(basename "$output")"
+          # Only the Drive folder name is a decision this workflow owns. Everything
+          # else the summary reports comes out of the package, so adding or
+          # renaming a mod in the builder does not silently leave this stale.
+          report="$(unzip -p "$output" patch-report.txt 2>/dev/null || true)"
+          [[ -n "$report" ]] || { echo "Package has no patch-report.txt"; exit 1; }
+
           # The builder names the ZIP <DEVICE>_<Mods|Stock>_<build id>_Recovery.zip.
           case "$filename" in
-            X9U_*)
-              device=Oppo_Find_X9_Ultra
-              model="OPPO Find X9 Ultra"
-              abl_version=16.0.6
-              ;;
-            OP15R_*)
-              device=OnePlus_15R
-              model="OnePlus 15R"
-              abl_version=16.0.1
-              ;;
+            X9U_*) device=Oppo_Find_X9_Ultra ;;
+            OP15R_*) device=OnePlus_15R ;;
             *) echo "Cannot detect device from output filename: $filename"; exit 1 ;;
           esac
+
+          model="$(sed -n 's/^Device profile: \(.*\) (.*/\1/p' <<< "$report" | head -n 1)"
+          abl_version="$(sed -n 's/^ABL donor version: //p' <<< "$report" | head -n 1)"
+          build_id="$(sed -n 's/^Build display ID: //p' <<< "$report" | head -n 1)"
           case "$filename" in
             *_Stock_*) mode=stock ;;
             *_Mods_*) mode=mods ;;
@@ -238,24 +235,24 @@ jobs:
           }
           drive_url="https://drive.google.com/file/d/$file_id"
 
+          # The builder writes one "<mod>: true|false" line per mod it knows about.
+          applied="$(sed -n 's/^\([A-Za-z][^:]*\): true$/\1/p' <<< "$report")"
+
           {
             echo "## Build complete"
             echo
             echo "- Model: **$model**"
             echo "- Build mode: **$mode**"
-            if [[ "$mode" == stock ]]; then
+            [[ -z "$build_id" ]] || echo "- Build: \`$build_id\`"
+            if [[ -n "$applied" ]]; then
+              echo "- Mods applied:"
+              sed 's/^/  - /' <<< "$applied"
+            else
               echo "- Content mods: none"
+            fi
+            if [[ "$mode" == stock ]]; then
               echo "- Stock recovery.img is restored by this package"
             else
-              echo "- Mods enabled:"
-              [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
-              [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
-              [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
-              [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
-              [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
-              echo "  - DisableSafeMediaVolume"
-              echo "  - AVB fstab patch"
-              echo "  - DisableOTA"
               echo "- The current recovery is left untouched"
             fi
             echo "- Always included:"
