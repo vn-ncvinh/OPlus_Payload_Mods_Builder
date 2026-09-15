@@ -15,8 +15,8 @@ on:
           - mods
           - stock
         default: mods
-      op15r_odm_url:
-        description: China odm.img URL - OnePlus 15R only, and always required there
+      ace6t_ota_url:
+        description: OnePlus Ace 6T OTA URL - OnePlus 15R only, and always required there
         required: false
         type: string
         default: ""
@@ -97,14 +97,14 @@ jobs:
         shell: bash
         env:
           ROM_URL: ${{ inputs.rom_url }}
-          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          ACE6T_OTA_URL: ${{ inputs.ace6t_ota_url }}
           MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
           YOUTUBE_URL: ${{ inputs.youtube_morphe_url }}
         run: |
-          # The builder resolves --op15r-odm and --my-preload itself, and both
+          # The builder resolves --ace6t-ota-url and --my-preload itself, and both
           # accept a local path, which never exists on a fresh runner.
           test -n "$ROM_URL" || { echo "rom_url is required"; exit 1; }
-          for pair in "rom_url=$ROM_URL" "op15r_odm_url=$OP15R_ODM_URL" \
+          for pair in "rom_url=$ROM_URL" "ace6t_ota_url=$ACE6T_OTA_URL" \
             "my_preload_url=$MY_PRELOAD_URL" "youtube_morphe_url=$YOUTUBE_URL"; do
             name="${pair%%=*}"
             value="${pair#*=}"
@@ -140,7 +140,7 @@ jobs:
         working-directory: builder
         env:
           BUILD_MODE: ${{ inputs.build_mode }}
-          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          ACE6T_OTA_URL: ${{ inputs.ace6t_ota_url }}
           MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
           ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
           ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
@@ -151,9 +151,10 @@ jobs:
         run: |
           args=("$GITHUB_WORKSPACE/rom-input" --output "$GITHUB_WORKSPACE/build-output")
 
-          # The builder rejects --op15r-odm on a non-OnePlus 15R payload and
-          # demands it on a OnePlus 15R one, so pass it through whenever given.
-          [[ -z "$OP15R_ODM_URL" ]] || args+=(--op15r-odm "$OP15R_ODM_URL")
+          # The builder rejects --ace6t-ota-url on a non-OnePlus 15R payload and
+          # demands an ODM source on a OnePlus 15R one, so pass it whenever given.
+          # It reads the OTA with range requests, so only the odm blob is fetched.
+          [[ -z "$ACE6T_OTA_URL" ]] || args+=(--ace6t-ota-url "$ACE6T_OTA_URL")
           [[ -z "$MY_PRELOAD_URL" ]] || args+=(--my-preload "$MY_PRELOAD_URL")
 
           if [[ "$BUILD_MODE" == stock ]]; then
@@ -183,7 +184,7 @@ jobs:
         env:
           RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
           GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
-          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          ACE6T_OTA_URL: ${{ inputs.ace6t_ota_url }}
           MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
         run: |
           config="$RUNNER_TEMP/rclone.conf"
@@ -258,7 +259,7 @@ jobs:
             echo "- Always included:"
             echo "  - abl $abl_version (still GBL vulnerability)"
             echo "  - GBL Chainload mode 1"
-            [[ -z "$OP15R_ODM_URL" ]] || echo "- China ODM: \`$OP15R_ODM_URL\`"
+            [[ -z "$ACE6T_OTA_URL" ]] || echo "- ODM taken from: \`$ACE6T_OTA_URL\`"
             [[ -z "$MY_PRELOAD_URL" ]] || echo "- Supplied my_preload: \`$MY_PRELOAD_URL\`"
             echo "- Download URL: [$filename]($drive_url)"
             echo "- SHA-256: \`$output_sha256\`"
@@ -269,7 +270,7 @@ jobs:
         shell: bash
         env:
           BUILD_MODE: ${{ inputs.build_mode }}
-          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          ACE6T_OTA_URL: ${{ inputs.ace6t_ota_url }}
           MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
           ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
           ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
@@ -303,8 +304,8 @@ jobs:
 
             # The two inputs whose absence the builder can only report at runtime.
             case "$reason" in
-              *"require --op15r-odm"*)
-                hint="Re-run with op15r_odm_url set to a China odm.img URL." ;;
+              *"require --ace6t-ota-url"*)
+                hint="Re-run with ace6t_ota_url set to a OnePlus Ace 6T OTA URL." ;;
               *"--my-preload"*)
                 hint="Re-run with my_preload_url set to a stock my_preload.img URL." ;;
             esac
@@ -329,7 +330,7 @@ jobs:
               echo "  - DisableOTA"
             fi
             [[ -z "$abl_version" ]] || echo "- abl $abl_version (still GBL vulnerability)"
-            [[ -z "$OP15R_ODM_URL" ]] || echo "- China ODM: \`$OP15R_ODM_URL\`"
+            [[ -z "$ACE6T_OTA_URL" ]] || echo "- ODM taken from: \`$ACE6T_OTA_URL\`"
             [[ -z "$MY_PRELOAD_URL" ]] || echo "- Supplied my_preload: \`$MY_PRELOAD_URL\`"
             echo "- Reason: \`$reason\`"
             [[ -z "$hint" ]] || echo "- Next step: $hint"

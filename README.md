@@ -49,7 +49,7 @@ they do not apply; the builder rejects an image it does not need.
 
 | Input | When it is required |
 | --- | --- |
-| `op15r_odm_url` | **Every** OnePlus 15R build, in either mode. The builder checks the image is the China ODM. |
+| `ace6t_ota_url` | **Every** OnePlus 15R build, in either mode. A OnePlus Ace 6T OTA, which the builder reads with range requests to pull out only the odm it needs, then checks that image is the China ODM. |
 | `my_preload_url` | X9U `stock` builds. Optional elsewhere, where it simply replaces the profile `my_preload` donor. |
 
 A stock build first tests the `my_preload` donor the private repo ships. The
