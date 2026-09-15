@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       rom_url:
-        description: Direct URL to payload.bin or a full OTA ZIP
+        description: Direct link to payload.bin or a full OTA ZIP
         required: true
         type: string
       build_mode:
-        description: mods = apply the patches below, stock = no content mods
+        description: stock applies no content mod, so the toggles below are ignored
         required: true
         type: choice
         options:
@@ -16,42 +16,42 @@ on:
           - stock
         default: mods
       op15r_odm_url:
-        description: China odm.img URL (required for every OnePlus 15R build)
+        description: China odm.img URL - OnePlus 15R only, and always required there
         required: false
         type: string
         default: ""
       my_preload_url:
-        description: Stock my_preload.img URL (required for X9U stock builds)
+        description: Stock my_preload.img URL - X9U stock builds only
         required: false
         type: string
         default: ""
       enable_debloat:
-        description: Apply debloat (mods mode only)
+        description: Debloat
         required: true
         type: boolean
         default: true
       enable_youtube_morphe:
-        description: Integrate YouTube Morphe without microG (mods mode only)
+        description: YouTube Morphe - replaces YouTube, no microG
         required: true
         type: boolean
         default: true
       youtube_morphe_url:
-        description: Optional YouTube Morphe module URL (blank = latest)
+        description: YouTube Morphe module URL - blank picks the latest
         required: false
         type: string
         default: ""
       enable_ggphotos_unlimited:
-        description: Apply GGPhotosUnlimited (mods mode only)
+        description: Google Photos unlimited backup
         required: true
         type: boolean
         default: true
       enable_disable_flag_secure:
-        description: Apply DisableFlagSecure (mods mode only)
+        description: Screenshot bypass in apps that block it
         required: true
         type: boolean
         default: true
       enable_lock_assistant_bypass:
-        description: Apply LockAssistantBypass (mods mode only)
+        description: Carrier-lock bypass
         required: true
         type: boolean
         default: true
@@ -255,6 +255,7 @@ jobs:
               [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
               echo "  - DisableSafeMediaVolume"
               echo "  - AVB fstab patch"
+              echo "  - DisableOTA"
               echo "- The current recovery is left untouched"
             fi
             echo "- Always included:"
@@ -328,6 +329,7 @@ jobs:
               [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
               echo "  - DisableSafeMediaVolume"
               echo "  - AVB fstab patch"
+              echo "  - DisableOTA"
             fi
             [[ -z "$abl_version" ]] || echo "- abl $abl_version (still GBL vulnerability)"
             [[ -z "$OP15R_ODM_URL" ]] || echo "- China ODM: \`$OP15R_ODM_URL\`"
