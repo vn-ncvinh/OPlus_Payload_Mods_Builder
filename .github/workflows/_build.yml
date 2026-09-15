@@ -121,6 +121,20 @@ jobs:
           lfs: true
           persist-credentials: false
 
+      # Before the ROM download, which takes long enough that a short-lived
+      # vendor link would expire behind it. payload-extract reads the OTA with
+      # range requests, so this pulls only the odm blob.
+      - name: Extract the odm from the Ace 6T OTA
+        if: ${{ inputs.ace6t_ota_url != '' }}
+        shell: bash
+        working-directory: builder
+        env:
+          ACE6T_OTA_URL: ${{ inputs.ace6t_ota_url }}
+        run: |
+          ./bin/Linux/x86_64/payload-extract extract \
+            --partitions odm --output "$GITHUB_WORKSPACE/odm" "$ACE6T_OTA_URL"
+          test -s "$GITHUB_WORKSPACE/odm/odm.img"
+
       - name: Download ROM
         shell: bash
         env:
@@ -147,10 +161,9 @@ jobs:
         run: |
           args=("$GITHUB_WORKSPACE/rom-input" --output "$GITHUB_WORKSPACE/build-output")
 
-          # The builder rejects --ace6t-ota-url on a non-OnePlus 15R payload and
-          # demands an ODM source on a OnePlus 15R one, so pass it whenever given.
-          # It reads the OTA with range requests, so only the odm blob is fetched.
-          [[ -z "$ACE6T_OTA_URL" ]] || args+=(--ace6t-ota-url "$ACE6T_OTA_URL")
+          # The odm was pulled out before the ROM download, so hand the builder
+          # the file rather than the link it came from, which by now may be dead.
+          [[ -z "$ACE6T_OTA_URL" ]] || args+=(--op15r-odm "$GITHUB_WORKSPACE/odm/odm.img")
           [[ -z "$MY_PRELOAD_URL" ]] || args+=(--my-preload "$MY_PRELOAD_URL")
 
           if [[ "$BUILD_MODE" == stock ]]; then

@@ -48,7 +48,7 @@ they do not apply; the builder rejects an image it does not need.
 
 | Input | When it is required |
 | --- | --- |
-| `ace6t_ota_url` | **Every** OnePlus 15R build, from either workflow. A OnePlus Ace 6T OTA, which the builder reads with range requests to pull out only the odm it needs, then checks that image is the China ODM. |
+| `ace6t_ota_url` | **Every** OnePlus 15R build, from either workflow. A OnePlus Ace 6T OTA. The odm is pulled out of it with range requests, so only that blob is fetched, and it happens before the ROM download so a link with a short expiry is used while it is still alive. The builder then checks the image is the China ODM. |
 | `my_preload_url` | X9U stock builds, and offered only by the stock form. A modded build uses the profile donor as shipped. |
 
 A stock build first tests the `my_preload` donor the private repo ships. The
