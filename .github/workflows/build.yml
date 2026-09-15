@@ -7,13 +7,31 @@ on:
         description: Direct URL to payload.bin or a full OTA ZIP
         required: true
         type: string
+      build_mode:
+        description: mods = apply the patches below, stock = no content mods
+        required: true
+        type: choice
+        options:
+          - mods
+          - stock
+        default: mods
+      op15r_odm_url:
+        description: China odm.img URL (required for every OnePlus 15R build)
+        required: false
+        type: string
+        default: ""
+      my_preload_url:
+        description: Stock my_preload.img URL (required for X9U stock builds)
+        required: false
+        type: string
+        default: ""
       enable_debloat:
-        description: Apply debloat
+        description: Apply debloat (mods mode only)
         required: true
         type: boolean
         default: true
       enable_youtube_morphe:
-        description: Integrate YouTube Morphe without microG
+        description: Integrate YouTube Morphe without microG (mods mode only)
         required: true
         type: boolean
         default: true
@@ -23,17 +41,17 @@ on:
         type: string
         default: ""
       enable_ggphotos_unlimited:
-        description: Apply GGPhotosUnlimited
+        description: Apply GGPhotosUnlimited (mods mode only)
         required: true
         type: boolean
         default: true
       enable_disable_flag_secure:
-        description: Apply DisableFlagSecure
+        description: Apply DisableFlagSecure (mods mode only)
         required: true
         type: boolean
         default: true
       enable_lock_assistant_bypass:
-        description: Apply LockAssistantBypass
+        description: Apply LockAssistantBypass (mods mode only)
         required: true
         type: boolean
         default: true
@@ -75,6 +93,28 @@ jobs:
           test -n "$RCLONE_CONFIG_BASE64" || { echo "Missing RCLONE_CONFIG_BASE64"; exit 1; }
           test -n "$GDRIVE_DESTINATION" || { echo "Missing GDRIVE_DESTINATION"; exit 1; }
 
+      - name: Check inputs
+        shell: bash
+        env:
+          ROM_URL: ${{ inputs.rom_url }}
+          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
+          YOUTUBE_URL: ${{ inputs.youtube_morphe_url }}
+        run: |
+          # The builder resolves --op15r-odm and --my-preload itself, and both
+          # accept a local path, which never exists on a fresh runner.
+          test -n "$ROM_URL" || { echo "rom_url is required"; exit 1; }
+          for pair in "rom_url=$ROM_URL" "op15r_odm_url=$OP15R_ODM_URL" \
+            "my_preload_url=$MY_PRELOAD_URL" "youtube_morphe_url=$YOUTUBE_URL"; do
+            name="${pair%%=*}"
+            value="${pair#*=}"
+            case "$value" in
+              "") ;;
+              https://*|http://*) ;;
+              *) echo "$name must use HTTP or HTTPS"; exit 1 ;;
+            esac
+          done
+
       - name: Clone private builder
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -90,10 +130,6 @@ jobs:
         env:
           ROM_URL: ${{ inputs.rom_url }}
         run: |
-          case "$ROM_URL" in
-            https://*|http://*) ;;
-            *) echo "rom_url must use HTTP or HTTPS"; exit 1 ;;
-          esac
           aria2c --continue=true --max-connection-per-server=16 \
             --split=16 --min-split-size=10M \
             --dir="$GITHUB_WORKSPACE" --out=rom-input "$ROM_URL"
@@ -103,6 +139,9 @@ jobs:
         shell: bash
         working-directory: builder
         env:
+          BUILD_MODE: ${{ inputs.build_mode }}
+          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
           ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
           ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
           YOUTUBE_URL: ${{ inputs.youtube_morphe_url }}
@@ -111,12 +150,28 @@ jobs:
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
         run: |
           args=("$GITHUB_WORKSPACE/rom-input" --output "$GITHUB_WORKSPACE/build-output")
-          [[ "$ENABLE_DEBLOAT" == true ]] || args+=(--skip-debloat)
-          [[ "$ENABLE_YOUTUBE" == true ]] || args+=(--skip-youtube-morphe)
-          [[ "$ENABLE_PHOTOS" == true ]] || args+=(--skip-photos-spoof)
-          [[ "$ENABLE_SECURE" == true ]] || args+=(--skip-secure-flag)
-          [[ "$ENABLE_LOCK_BYPASS" == true ]] || args+=(--skip-lock-assistant-bypass)
-          [[ -z "$YOUTUBE_URL" ]] || args+=(--youtube-morphe-url "$YOUTUBE_URL")
+
+          # The builder rejects --op15r-odm on a non-OnePlus 15R payload and
+          # demands it on a OnePlus 15R one, so pass it through whenever given.
+          [[ -z "$OP15R_ODM_URL" ]] || args+=(--op15r-odm "$OP15R_ODM_URL")
+          [[ -z "$MY_PRELOAD_URL" ]] || args+=(--my-preload "$MY_PRELOAD_URL")
+
+          if [[ "$BUILD_MODE" == stock ]]; then
+            # --stock-build already disables every content mod, so the
+            # --skip-* flags below would be redundant.
+            args+=(--stock-build)
+          else
+            [[ "$ENABLE_DEBLOAT" == true ]] || args+=(--skip-debloat)
+            [[ "$ENABLE_PHOTOS" == true ]] || args+=(--skip-photos-spoof)
+            [[ "$ENABLE_SECURE" == true ]] || args+=(--skip-secure-flag)
+            [[ "$ENABLE_LOCK_BYPASS" == true ]] || args+=(--skip-lock-assistant-bypass)
+            if [[ "$ENABLE_YOUTUBE" == true ]]; then
+              [[ -z "$YOUTUBE_URL" ]] || args+=(--youtube-morphe-url "$YOUTUBE_URL")
+            else
+              args+=(--skip-youtube-morphe)
+            fi
+          fi
+
           set +e
           ./start-oplus.sh "${args[@]}" 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
           build_status=${PIPESTATUS[0]}
@@ -128,6 +183,8 @@ jobs:
         env:
           RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
           GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
+          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
           ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
           ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
@@ -147,18 +204,24 @@ jobs:
 
           output="${outputs[0]}"
           filename="$(basename "$output")"
+          # The builder names the ZIP <DEVICE>_<Mods|Stock>_<build id>_Recovery.zip.
           case "$filename" in
-            X9U_Mods_*)
+            X9U_*)
               device=Oppo_Find_X9_Ultra
               model="OPPO Find X9 Ultra"
               abl_version=16.0.6
               ;;
-            OP15R_Mods_*)
+            OP15R_*)
               device=OnePlus_15R
               model="OnePlus 15R"
               abl_version=16.0.1
               ;;
             *) echo "Cannot detect device from output filename: $filename"; exit 1 ;;
+          esac
+          case "$filename" in
+            *_Stock_*) mode=stock ;;
+            *_Mods_*) mode=mods ;;
+            *) echo "Cannot detect build mode from output filename: $filename"; exit 1 ;;
           esac
 
           destination="${GDRIVE_DESTINATION%/}/$device"
@@ -179,16 +242,26 @@ jobs:
             echo "## Build complete"
             echo
             echo "- Model: **$model**"
-            echo "- Mods enabled:"
-            [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
-            [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
-            [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
-            [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
-            [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
-            echo "  - DisableSafeMediaVolume"
-            echo "  - AVB fstab patch"
+            echo "- Build mode: **$mode**"
+            if [[ "$mode" == stock ]]; then
+              echo "- Content mods: none"
+              echo "- Stock recovery.img is restored by this package"
+            else
+              echo "- Mods enabled:"
+              [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
+              [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
+              [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
+              [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
+              [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
+              echo "  - DisableSafeMediaVolume"
+              echo "  - AVB fstab patch"
+              echo "- The current recovery is left untouched"
+            fi
+            echo "- Always included:"
             echo "  - abl $abl_version (still GBL vulnerability)"
             echo "  - GBL Chainload mode 1"
+            [[ -z "$OP15R_ODM_URL" ]] || echo "- China ODM: \`$OP15R_ODM_URL\`"
+            [[ -z "$MY_PRELOAD_URL" ]] || echo "- Supplied my_preload: \`$MY_PRELOAD_URL\`"
             echo "- Download URL: [$filename]($drive_url)"
             echo "- SHA-256: \`$output_sha256\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -197,6 +270,9 @@ jobs:
         if: ${{ failure() }}
         shell: bash
         env:
+          BUILD_MODE: ${{ inputs.build_mode }}
+          OP15R_ODM_URL: ${{ inputs.op15r_odm_url }}
+          MY_PRELOAD_URL: ${{ inputs.my_preload_url }}
           ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
           ENABLE_YOUTUBE: ${{ inputs.enable_youtube_morphe }}
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
@@ -207,6 +283,7 @@ jobs:
           model="Unknown"
           abl_version=""
           reason="Workflow stopped before the builder reported an error"
+          hint=""
 
           if [[ -s "$log" ]]; then
             detected="$(sed -n 's/^\[INFO\] Detected \(.*\) (project ID: .*/\1/p' "$log" | tail -n 1)"
@@ -225,21 +302,36 @@ jobs:
             esac
             [[ -z "$last_error" ]] || reason="$last_error"
             [[ -z "$arb_warning" ]] || reason="$arb_warning; $reason"
+
+            # The two inputs whose absence the builder can only report at runtime.
+            case "$reason" in
+              *"require --op15r-odm"*)
+                hint="Re-run with op15r_odm_url set to a China odm.img URL." ;;
+              *"--my-preload"*)
+                hint="Re-run with my_preload_url set to a stock my_preload.img URL." ;;
+            esac
           fi
 
           {
             echo "## Build failed"
             echo
             echo "- Model: **$model**"
-            echo "- Mods requested:"
-            [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
-            [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
-            [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
-            [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
-            [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
-            echo "  - DisableSafeMediaVolume"
-            echo "  - AVB fstab patch"
-            [[ -z "$abl_version" ]] || echo "  - abl $abl_version (still GBL vulnerability)"
-            echo "  - GBL Chainload mode 1"
+            echo "- Build mode: **$BUILD_MODE**"
+            if [[ "$BUILD_MODE" == stock ]]; then
+              echo "- Content mods: none"
+            else
+              echo "- Mods requested:"
+              [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
+              [[ "$ENABLE_YOUTUBE" == true ]] && echo "  - YouTube Morphe"
+              [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
+              [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
+              [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
+              echo "  - DisableSafeMediaVolume"
+              echo "  - AVB fstab patch"
+            fi
+            [[ -z "$abl_version" ]] || echo "- abl $abl_version (still GBL vulnerability)"
+            [[ -z "$OP15R_ODM_URL" ]] || echo "- China ODM: \`$OP15R_ODM_URL\`"
+            [[ -z "$MY_PRELOAD_URL" ]] || echo "- Supplied my_preload: \`$MY_PRELOAD_URL\`"
             echo "- Reason: \`$reason\`"
+            [[ -z "$hint" ]] || echo "- Next step: $hint"
           } >> "$GITHUB_STEP_SUMMARY"
