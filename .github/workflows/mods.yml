@@ -42,6 +42,11 @@ on:
         required: true
         type: boolean
         default: true
+      enable_skip_install_verify:
+        description: Skip the scan an installing app is sent for
+        required: true
+        type: boolean
+        default: true
 permissions:
   contents: read
 
@@ -59,3 +64,4 @@ jobs:
       enable_ggphotos_unlimited: ${{ inputs.enable_ggphotos_unlimited }}
       enable_disable_flag_secure: ${{ inputs.enable_disable_flag_secure }}
       enable_lock_assistant_bypass: ${{ inputs.enable_lock_assistant_bypass }}
+      enable_skip_install_verify: ${{ inputs.enable_skip_install_verify }}

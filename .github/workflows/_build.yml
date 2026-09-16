@@ -43,6 +43,10 @@ on:
         required: false
         type: boolean
         default: true
+      enable_skip_install_verify:
+        required: false
+        type: boolean
+        default: true
     secrets:
       PRIVATE_REPO_TOKEN:
         required: true
@@ -158,6 +162,7 @@ jobs:
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
           ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
+          ENABLE_SKIP_VERIFY: ${{ inputs.enable_skip_install_verify }}
         run: |
           args=("$GITHUB_WORKSPACE/rom-input" --output "$GITHUB_WORKSPACE/build-output")
 
@@ -175,6 +180,7 @@ jobs:
             [[ "$ENABLE_PHOTOS" == true ]] || args+=(--skip-photos-spoof)
             [[ "$ENABLE_SECURE" == true ]] || args+=(--skip-secure-flag)
             [[ "$ENABLE_LOCK_BYPASS" == true ]] || args+=(--skip-lock-assistant-bypass)
+            [[ "$ENABLE_SKIP_VERIFY" == true ]] || args+=(--skip-install-verify)
             if [[ "$ENABLE_YOUTUBE" == true ]]; then
               [[ -z "$YOUTUBE_URL" ]] || args+=(--youtube-morphe-url "$YOUTUBE_URL")
             else
@@ -286,6 +292,7 @@ jobs:
           ENABLE_PHOTOS: ${{ inputs.enable_ggphotos_unlimited }}
           ENABLE_SECURE: ${{ inputs.enable_disable_flag_secure }}
           ENABLE_LOCK_BYPASS: ${{ inputs.enable_lock_assistant_bypass }}
+          ENABLE_SKIP_VERIFY: ${{ inputs.enable_skip_install_verify }}
         run: |
           log="$GITHUB_WORKSPACE/build.log"
           model="Unknown"
@@ -334,6 +341,7 @@ jobs:
               [[ "$ENABLE_PHOTOS" == true ]] && echo "  - GGPhotosUnlimited"
               [[ "$ENABLE_SECURE" == true ]] && echo "  - DisableFlagSecure"
               [[ "$ENABLE_LOCK_BYPASS" == true ]] && echo "  - LockAssistantBypass"
+              [[ "$ENABLE_SKIP_VERIFY" == true ]] && echo "  - SkipInstallVerify"
               echo "  - DisableSafeMediaVolume"
               echo "  - AVB fstab patch"
               echo "  - DisableOTA"
