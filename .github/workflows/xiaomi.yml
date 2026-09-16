@@ -1,0 +1,301 @@
+# Builds a Xiaomi Global/EEA ROM with vn-ncvinh/Xiaomi_8E5_Global_Mods, zips the
+# flash folder, and uploads it to Google Drive.
+#
+# It does not share _build.yml with the OPlus workflows: that builder is a
+# different repository, takes command-line flags rather than ENABLE_* variables,
+# and produces a recovery ZIP rather than a folder of fastboot images.
+name: Xiaomi 8E5 Global Mods Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_url:
+        description: Direct link to a Xiaomi Global/EEA full OTA ZIP
+        required: true
+        type: string
+      enable_debloat:
+        description: Debloat
+        required: true
+        type: boolean
+        default: true
+      enable_miui_dialer:
+        description: MIUI Dialer - replaces Google Dialer, Messages and Contacts
+        required: true
+        type: boolean
+        default: true
+      enable_youtube_morphe:
+        description: YouTube Morphe - replaces YouTube, no microG
+        required: true
+        type: boolean
+        default: true
+      youtube_morphe_url:
+        description: YouTube Morphe module URL - blank picks the latest
+        required: false
+        type: string
+        default: ""
+      enable_google_photos_spoof:
+        description: Google Photos unlimited backup
+        required: true
+        type: boolean
+        default: true
+      enable_secure_flag_bypass:
+        description: Screenshot bypass in apps that block it
+        required: true
+        type: boolean
+        default: true
+      enable_efisp_fake_lock:
+        description: EFISP fake lock - myron, pudding and nezha only
+        required: true
+        type: boolean
+        default: true
+      enable_byron_thermal:
+        description: Byron CPU/GPU thermal limits
+        required: true
+        type: boolean
+        default: true
+      enable_social_power:
+        description: Dynamic power profile for social and video apps
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and upload ROM
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      # apt runs before the disk is carved up. maximize-build-space leaves the
+      # root filesystem with only root-reserve-mb free, and an apt-get update
+      # afterwards can run it out of space.
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            aapt aria2 bc openjdk-21-jre-headless p7zip-full python3 \
+            python3-cryptography rclone unzip xmlstarlet zip zipalign
+
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@c28619d8999a147d5e09c1199f84ff6af6ad5794
+        with:
+          swap-size-mb: 1024
+          root-reserve-mb: 4096
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+
+      - name: Check required secrets
+        shell: bash
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
+        run: |
+          test -n "$PRIVATE_REPO_TOKEN" || { echo "Missing PRIVATE_REPO_TOKEN"; exit 1; }
+          test -n "$RCLONE_CONFIG_BASE64" || { echo "Missing RCLONE_CONFIG_BASE64"; exit 1; }
+          test -n "$GDRIVE_DESTINATION" || { echo "Missing GDRIVE_DESTINATION"; exit 1; }
+
+      - name: Check inputs
+        shell: bash
+        env:
+          ROM_URL: ${{ inputs.rom_url }}
+          YOUTUBE_URL: ${{ inputs.youtube_morphe_url }}
+        run: |
+          test -n "$ROM_URL" || { echo "rom_url is required"; exit 1; }
+          for pair in "rom_url=$ROM_URL" "youtube_morphe_url=$YOUTUBE_URL"; do
+            name="${pair%%=*}"
+            value="${pair#*=}"
+            case "$value" in
+              "") ;;
+              https://*|http://*) ;;
+              *) echo "$name must use HTTP or HTTPS"; exit 1 ;;
+            esac
+          done
+
+      - name: Clone private builder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: vn-ncvinh/Xiaomi_8E5_Global_Mods
+          ref: main
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          path: builder
+          persist-credentials: false
+
+      # The builder derives the device and region from the OTA file name, so it
+      # has to keep the name the vendor gave it.
+      - name: Download ROM
+        shell: bash
+        env:
+          ROM_URL: ${{ inputs.rom_url }}
+        run: |
+          name="${ROM_URL%%\#*}"
+          name="${name%%\?*}"
+          name="${name##*/}"
+          case "$name" in
+            ""|.|..) echo "Cannot work out a file name from rom_url"; exit 1 ;;
+          esac
+
+          mkdir -p "$GITHUB_WORKSPACE/rom"
+          aria2c --continue=true --max-connection-per-server=16 \
+            --split=16 --min-split-size=10M \
+            --dir="$GITHUB_WORKSPACE/rom" --out="$name" "$ROM_URL"
+          test -s "$GITHUB_WORKSPACE/rom/$name"
+          printf '%s\n' "$GITHUB_WORKSPACE/rom/$name" > "$GITHUB_WORKSPACE/rom-path"
+
+      - name: Build flash folder
+        shell: bash
+        working-directory: builder
+        env:
+          YOUTUBE_MORPHE_URL: ${{ inputs.youtube_morphe_url }}
+          ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
+          ENABLE_MIUI_DIALER: ${{ inputs.enable_miui_dialer }}
+          ENABLE_YOUTUBE_MORPHE: ${{ inputs.enable_youtube_morphe }}
+          ENABLE_GOOGLE_PHOTOS_SPOOF: ${{ inputs.enable_google_photos_spoof }}
+          ENABLE_SECURE_FLAG_BYPASS: ${{ inputs.enable_secure_flag_bypass }}
+          ENABLE_EFISP_FAKE_LOCK: ${{ inputs.enable_efisp_fake_lock }}
+          ENABLE_BYRON_THERMAL: ${{ inputs.enable_byron_thermal }}
+          ENABLE_SOCIAL_POWER: ${{ inputs.enable_social_power }}
+        run: |
+          # Dependencies are installed above, the output stays a folder so this
+          # workflow can zip it itself, and the workspace is left alone because
+          # the runner is thrown away anyway.
+          export INSTALL_DEPS=false
+          export ARCHIVE_OUTPUTS=false
+          export CLEAN_WORKSPACE=false
+          export DRIVE_OUTPUT_DIR="$GITHUB_WORKSPACE/build-output"
+          export COLAB_RUN_ID="github-${GITHUB_RUN_ID}"
+          export ROM_URL="$(cat "$GITHUB_WORKSPACE/rom-path")"
+
+          mkdir -p "$DRIVE_OUTPUT_DIR"
+
+          set +e
+          bash colab/colab_run.sh 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+          build_status=${PIPESTATUS[0]}
+          set -e
+          exit "$build_status"
+
+      - name: Zip the flash folder
+        shell: bash
+        run: |
+          mapfile -t folders < <(find "$GITHUB_WORKSPACE/build-output" \
+            -mindepth 1 -maxdepth 1 -type d -print)
+          [[ ${#folders[@]} -eq 1 ]] || {
+            echo "Expected exactly one build folder, found ${#folders[@]}"
+            exit 1
+          }
+
+          folder="${folders[0]}"
+          name="$(basename "$folder")"
+          test -s "$folder/super.img"
+
+          # Stored, not deflated: super.img is already a compressed EROFS super,
+          # so deflate would spend minutes to save almost nothing.
+          ( cd "$GITHUB_WORKSPACE/build-output" && zip -r -0 -q "$name.zip" "$name" )
+          test -s "$GITHUB_WORKSPACE/build-output/$name.zip"
+          rm -rf -- "$folder"
+
+          printf '%s\n' "$name.zip" > "$GITHUB_WORKSPACE/output-name"
+
+      - name: Upload output to Google Drive
+        shell: bash
+        env:
+          RCLONE_CONFIG_BASE64: ${{ secrets.RCLONE_CONFIG_BASE64 }}
+          GDRIVE_DESTINATION: ${{ secrets.GDRIVE_DESTINATION }}
+          ENABLE_DEBLOAT: ${{ inputs.enable_debloat }}
+          ENABLE_MIUI_DIALER: ${{ inputs.enable_miui_dialer }}
+          ENABLE_YOUTUBE_MORPHE: ${{ inputs.enable_youtube_morphe }}
+          ENABLE_GOOGLE_PHOTOS_SPOOF: ${{ inputs.enable_google_photos_spoof }}
+          ENABLE_SECURE_FLAG_BYPASS: ${{ inputs.enable_secure_flag_bypass }}
+          ENABLE_EFISP_FAKE_LOCK: ${{ inputs.enable_efisp_fake_lock }}
+          ENABLE_BYRON_THERMAL: ${{ inputs.enable_byron_thermal }}
+          ENABLE_SOCIAL_POWER: ${{ inputs.enable_social_power }}
+        run: |
+          config="$RUNNER_TEMP/rclone.conf"
+          printf '%s' "$RCLONE_CONFIG_BASE64" | base64 --decode > "$config"
+          chmod 600 "$config"
+
+          filename="$(cat "$GITHUB_WORKSPACE/output-name")"
+          output="$GITHUB_WORKSPACE/build-output/$filename"
+          test -s "$output"
+
+          # Everything reported below comes out of the builder's own metadata, so
+          # adding or renaming a mod there does not leave this summary stale.
+          log="$GITHUB_WORKSPACE/build.log"
+          model="$(sed -n 's/^- Device Name://p' "$log" | head -n 1)"
+          codename="$(sed -n 's/^- Codename://p' "$log" | head -n 1)"
+          version="$(sed -n 's/^- Xiaomi Version://p' "$log" | tail -n 1)"
+          android="$(sed -n 's/^- Android://p' "$log" | head -n 1)"
+          repacked="$(sed -n 's/^\[MODS\] - Partitions to repack: //p' "$log" | head -n 1)"
+
+          destination="${GDRIVE_DESTINATION%/}/Xiaomi_${codename:-Unknown}"
+          output_sha256="$(sha256sum "$output" | awk '{print $1}')"
+          rclone --config "$config" copyto --progress \
+            "$output" "$destination/$filename"
+
+          file_id="$(rclone --config "$config" lsjson \
+            "$destination/$filename" --stat | \
+            python3 -c 'import json, sys; print(json.load(sys.stdin).get("ID", ""))')"
+          [[ -n "$file_id" ]] || {
+            echo "Unable to read the uploaded Google Drive file ID"
+            exit 1
+          }
+          drive_url="https://drive.google.com/file/d/$file_id"
+
+          {
+            echo "## Build complete"
+            echo
+            [[ -z "$model" ]] || echo "- Model: **$model**"
+            [[ -z "$codename" ]] || echo "- Codename: \`$codename\`"
+            [[ -z "$version" ]] || echo "- Base version: \`$version\`"
+            [[ -z "$android" ]] || echo "- Android: \`$android\`"
+            echo "- Mods applied:"
+            [[ "$ENABLE_DEBLOAT" == true ]] && echo "  - Debloat"
+            [[ "$ENABLE_MIUI_DIALER" == true ]] && echo "  - MIUI Dialer"
+            [[ "$ENABLE_YOUTUBE_MORPHE" == true ]] && echo "  - YouTube Morphe"
+            [[ "$ENABLE_GOOGLE_PHOTOS_SPOOF" == true ]] && echo "  - GGPhotosUnlimited"
+            [[ "$ENABLE_SECURE_FLAG_BYPASS" == true ]] && echo "  - DisableFlagSecure"
+            [[ "$ENABLE_EFISP_FAKE_LOCK" == true ]] && echo "  - EFISP fake lock"
+            [[ "$ENABLE_BYRON_THERMAL" == true ]] && echo "  - Byron thermal"
+            [[ "$ENABLE_SOCIAL_POWER" == true ]] && echo "  - Social power profile"
+            echo "  - AVB fstab patch"
+            echo "  - MIUI memory extension off"
+            echo "  - Volume alert bypass"
+            [[ -z "$repacked" ]] || echo "- Partitions repacked: \`$repacked\`"
+            echo "- Everything else goes in as Xiaomi shipped it"
+            echo "- Flash with the fastboot script inside the ZIP"
+            echo "- Download URL: [$filename]($drive_url)"
+            echo "- SHA-256: \`$output_sha256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize failure
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          log="$GITHUB_WORKSPACE/build.log"
+          model="Unknown"
+          reason="Workflow stopped before the builder reported an error"
+
+          if [[ -s "$log" ]]; then
+            detected="$(sed -n 's/^- Device Name://p' "$log" | head -n 1)"
+            last_error="$(sed -n 's/^\[ERROR\] - //p' "$log" | tail -n 1)"
+            [[ -z "$detected" ]] || model="$detected"
+            [[ -z "$last_error" ]] || reason="$last_error"
+          fi
+
+          {
+            echo "## Build failed"
+            echo
+            echo "- Model: **$model**"
+            echo "- Reason: \`$reason\`"
+            case "$reason" in
+              *"not Virtual A/B"*)
+                echo "- Next step: this builder only supports Virtual A/B devices." ;;
+              *"Unknown device"*)
+                echo "- Next step: add the device's super size to bin/getSuperSize.sh in the builder." ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
