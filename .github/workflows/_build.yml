@@ -239,7 +239,13 @@ jobs:
 
           destination="${GDRIVE_DESTINATION%/}/$device"
           output_sha256="$(sha256sum "$output" | awk '{print $1}')"
+          # A Drive upload is one sequential stream, so throughput is capped by
+          # the chunk size divided by the round trip to Google. rclone defaults to
+          # 8M chunks; 256M cuts the number of round trips by 32 and costs 256M of
+          # the runner's RAM for the single transfer this step runs.
           rclone --config "$config" copyto --progress \
+            --drive-chunk-size 256M \
+            --drive-pacer-min-sleep 10ms \
             "$output" "$destination/$filename"
 
           file_id="$(rclone --config "$config" lsjson \
