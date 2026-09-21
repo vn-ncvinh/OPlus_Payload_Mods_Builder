@@ -33,9 +33,12 @@ Copy the output into the `RCLONE_CONFIG_BASE64` secret without adding quotes.
 Three workflows sit in **Actions**. The first two build OPlus devices, and
 which one you pick is the build mode:
 
-- **OPlus Payload Mods Builder** applies the patches you tick, plus
-  DisableSafeMediaVolume, the AVB fstab patch and DisableOTA, which have no
-  toggle. The device keeps its current recovery.
+- **OPlus Payload Mods Builder** applies every content mod. Only
+  LockAssistantBypass and OtaCardBrand have a toggle; Debloat, YouTube Morphe,
+  GGPhotosUnlimited, DisableFlagSecure, SkipInstallVerify,
+  DisableSafeMediaVolume, the AVB fstab patch and DisableOTA always go in.
+  `youtube_morphe_url` pins a specific module ZIP; blank picks the latest.
+  The device keeps its current recovery.
 - **OPlus Stock Builder** applies no content mod at all. The package still
   carries the vulnerable ABL donor and the GBL Chainload EFISP, and it restores
   the stock `recovery.img` from the payload. Its form asks for three things,
