@@ -31,7 +31,12 @@ on:
         description: Put a name in front of the version on the OTA card
         required: true
         type: boolean
-        default: true
+        default: false
+      ota_card_signature:
+        description: The name to put there
+        required: false
+        type: string
+        default: ViOS
 
 permissions:
   contents: read
@@ -48,3 +53,4 @@ jobs:
       youtube_morphe_url: ${{ inputs.youtube_morphe_url }}
       enable_lock_assistant_bypass: ${{ inputs.enable_lock_assistant_bypass }}
       enable_ota_card_brand: ${{ inputs.enable_ota_card_brand }}
+      ota_card_signature: ${{ inputs.ota_card_signature }}
